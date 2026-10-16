@@ -58,6 +58,21 @@ footer{text-align:center;color:#a8b7cb;font-size:12px;padding:22px}
 .status{color:#f4cd65;font-size:12px;margin-top:8px}
 @media(min-width:650px){.grid{grid-template-columns:repeat(10,minmax(0,1fr));gap:5px}}
 @media(min-width:1000px){.grid{grid-template-columns:repeat(12,minmax(0,1fr))}}
+/* デデデ専用枠を通常キャラと同じデザインにする */
+.fighter.mine {
+  border: 1px solid #607086 !important;
+  background: linear-gradient(135deg, #52647d, #253145) !important;
+}
+
+/* 星マークも非表示 */
+.mine::before {
+  display: none !important;
+}
+
+/* 黄色い丸も全キャラ非表示 */
+.dot {
+  display: none !important;
+}
 </style>
 </head>
 <body>
