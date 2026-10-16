@@ -1,5 +1,5 @@
 
-const CACHE_NAME = "smash-special-offline-v1";
+const CACHE_NAME = "smash-special-offline-v2";
 
 const APP_FILES = [
   "./",
@@ -30,19 +30,45 @@ self.addEventListener("activate", event => {
 });
 
 // サイトの表示に必要なファイルをキャッシュから返す
+
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
 
-  // 自分のサイト以外の通信は対象外
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(event.request).then(cached => {
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+
+      // HTMLはオンラインなら最新版を優先
+      if (
+        event.request.mode === "navigate" ||
+        url.pathname.endsWith("/index.html")
+      ) {
+        try {
+          const response = await fetch(event.request);
+
+          if (response.ok) {
+            await cache.put(event.request, response.clone());
+          }
+
+          return response;
+        } catch {
+          return (
+            await cache.match(event.request) ||
+            await cache.match("./index.html") ||
+            Response.error()
+          );
+        }
+      }
+
+      const cached = await cache.match(event.request);
+
       if (cached) return cached;
 
       return fetch(event.request);
-    })
+    })()
   );
 });

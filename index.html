@@ -87,6 +87,13 @@ footer{text-align:center;color:#a8b7cb;font-size:12px;padding:22px}
 <input id="search" type="search" placeholder="キャラを検索…">
 <button class="btn" id="exportBtn">バックアップ</button>
 <button class="btn" id="importBtn">復元</button>
+<button class="btn" id="loginBtn">Firebaseログイン</button>
+<button class="btn" id="logoutBtn" hidden>ログアウト</button>
+<button class="btn" id="uploadCloudBtn" hidden>PCメモを初回登録</button>
+<button class="btn" id="downloadCloudBtn" hidden>クラウドのメモを読み込む</button>
+<span id="syncStatus" class="note" role="status">
+  未ログイン・端末内に保存中
+</span>
 <input id="importFile" type="file" accept=".json" hidden>
 </div>
 
@@ -370,9 +377,14 @@ $("saveBtn").onclick=()=>{
  });
 
  data.notes[selected]=notes;
- saveData();
- renderGrid();
- showNotes();
+const savedOK = saveData();
+
+if (savedOK && window.smashCloudSync) {
+  window.smashCloudSync.markEdited(selected);
+}
+
+renderGrid();
+showNotes();
 };
 
 $("cancelBtn").onclick=showNotes;
@@ -515,6 +527,316 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
+</script>
+
+<script type="module">
+import { initializeApp } from
+  "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+
+import {
+  getFirestore,
+  doc,
+  collection,
+  getDocs,
+  setDoc,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBuy-lbSIpHg8FzeE2YTM7gN07AI067qOE",
+  authDomain: "smash-special-sync.firebaseapp.com",
+  projectId: "smash-special-sync",
+  storageBucket: "smash-special-sync.firebasestorage.app",
+  messagingSenderId: "577337214458",
+  appId: "1:577337214458:web:a4b07a097983f0a9945043"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const status = document.getElementById("syncStatus");
+const loginBtn = document.getElementById("loginBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+const uploadBtn = document.getElementById("uploadCloudBtn");
+const downloadBtn = document.getElementById("downloadCloudBtn");
+
+const PENDING_KEY = "smash-special-sync-pending-v1";
+
+let currentUser = null;
+let unsubscribe = null;
+let syncing = false;
+let cloudReady = false;
+
+function getPending() {
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function setPending(pending) {
+  localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+}
+
+function setStatus(message) {
+  status.textContent = message;
+}
+
+function memoRef(name) {
+  return doc(
+    db,
+    "users",
+    currentUser.uid,
+    "memos",
+    String(fighters.indexOf(name))
+  );
+}
+
+function markEdited(name) {
+  const pending = getPending();
+  pending[name] = {
+    notes: structuredClone(data.notes[name] || []),
+    changedAt: Date.now()
+  };
+  setPending(pending);
+  setStatus("端末に保存済み・同期待ち");
+  flushPending();
+}
+
+window.smashCloudSync = { markEdited };
+
+async function flushPending() {
+  if (!currentUser || !cloudReady || syncing || !navigator.onLine) {
+    return;
+  }
+
+  syncing = true;
+
+  try {
+    const pending = getPending();
+
+    for (const [name, entry] of Object.entries(pending)) {
+      if (!fighters.includes(name)) continue;
+
+      await setDoc(memoRef(name), {
+        name,
+        notes: entry.notes,
+        changedAt: entry.changedAt
+      });
+
+      const latest = getPending();
+
+      // 送信中に再編集された内容は消さない
+      if (latest[name]?.changedAt === entry.changedAt) {
+        delete latest[name];
+        setPending(latest);
+      }
+    }
+
+    setStatus(
+      Object.keys(getPending()).length
+        ? "未同期のメモがあります"
+        : "メモ同期完了"
+    );
+  } catch (error) {
+    console.error(error);
+    setStatus("同期待ち・通信または権限を確認");
+  } finally {
+    syncing = false;
+  }
+}
+
+loginBtn.onclick = async () => {
+  const email = prompt("Firebaseのメールアドレスを入力");
+  if (!email) return;
+
+  const password = prompt("Firebaseのパスワードを入力");
+  if (!password) return;
+
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    console.error(error);
+    alert("ログインできませんでした。認証情報を確認してね。");
+  }
+};
+
+logoutBtn.onclick = async () => {
+  await signOut(auth);
+};
+
+uploadBtn.onclick = async () => {
+  if (!currentUser || !navigator.onLine) return;
+
+  if (!confirm(
+    "この端末の全キャラのメモをクラウドへ登録します。\n" +
+    "既存のクラウドメモは上書きされます。\n" +
+    "PCのバックアップを保存済みですか？"
+  )) return;
+
+  try {
+    setStatus("クラウドに登録中…");
+
+    for (const name of fighters) {
+      await setDoc(memoRef(name), {
+        name,
+        notes: data.notes[name] || [],
+        changedAt: Date.now()
+      });
+    }
+
+    setPending({});
+    setStatus("初回登録完了！");
+    alert("PCのメモをクラウドに登録したよ！");
+  } catch (error) {
+    console.error(error);
+    setStatus("登録失敗・通信とFirestoreルールを確認");
+  }
+};
+
+downloadBtn.onclick = async () => {
+  if (!currentUser || !navigator.onLine) return;
+
+  if (!confirm(
+    "クラウドのメモで、この端末のメモを置き換えます。\n" +
+    "画像は変更しません。\n" +
+    "この端末のバックアップを保存済みですか？"
+  )) return;
+
+  try {
+    const snapshot = await getDocs(
+      collection(db, "users", currentUser.uid, "memos")
+    );
+
+    if (snapshot.empty) {
+      alert("クラウドにメモがありません。先にPCで初回登録してね。");
+      return;
+    }
+
+    const nextNotes = structuredClone(data.notes);
+
+    snapshot.forEach(item => {
+      const record = item.data();
+
+      if (
+        fighters.includes(record.name) &&
+        Array.isArray(record.notes)
+      ) {
+        nextNotes[record.name] = record.notes;
+      }
+    });
+
+    const previousNotes = data.notes;
+    data.notes = nextNotes;
+
+    if (!saveData()) {
+      data.notes = previousNotes;
+      return;
+    }
+
+    setPending({});
+    renderGrid();
+
+    if (selected !== null) showNotes();
+
+    setStatus("クラウドのメモを読み込みました");
+  } catch (error) {
+    console.error(error);
+    setStatus("読み込み失敗");
+  }
+};
+
+onAuthStateChanged(auth, user => {
+  if (unsubscribe) {
+    unsubscribe();
+    unsubscribe = null;
+  }
+
+  currentUser = user;
+  cloudReady = false;
+
+  loginBtn.hidden = !!user;
+  logoutBtn.hidden = !user;
+  uploadBtn.hidden = !user;
+  downloadBtn.hidden = !user;
+
+  if (!user) {
+    setStatus("未ログイン・端末内に保存中");
+    return;
+  }
+
+  setStatus("ログイン済み・クラウドを確認中");
+
+  unsubscribe = onSnapshot(
+    collection(db, "users", user.uid, "memos"),
+    snapshot => {
+      // Firestoreのキャッシュ結果だけでは初回同期を開始しない
+      if (snapshot.metadata.fromCache) {
+        setStatus("オフライン・端末内で編集可能");
+        return;
+      }
+
+      cloudReady = true;
+      const pending = getPending();
+      let changed = false;
+
+      snapshot.forEach(item => {
+        const record = item.data();
+        const name = record.name;
+
+        if (!fighters.includes(name)) return;
+        if (!Array.isArray(record.notes)) return;
+
+        // 未送信の端末内編集を優先
+        if (pending[name]) return;
+
+        if (
+          JSON.stringify(data.notes[name] || []) !==
+          JSON.stringify(record.notes)
+        ) {
+          data.notes[name] = record.notes;
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        saveData();
+        renderGrid();
+
+        // 編集中の入力欄は触らない
+        if (
+          selected !== null &&
+          document.getElementById("editor")
+            .classList.contains("hidden")
+        ) {
+          showNotes();
+        }
+      }
+
+      flushPending();
+
+      if (!Object.keys(pending).length) {
+        setStatus("クラウド接続中");
+      }
+    },
+    error => {
+      console.error(error);
+      cloudReady = false;
+      setStatus("クラウド接続エラー");
+    }
+  );
+});
+
+window.addEventListener("online", flushPending);
 </script>
 </body>
 </html>
