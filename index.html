@@ -32,8 +32,12 @@ button{cursor:pointer;font:inherit}
 .fighter img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
 .placeholder{width:50%;height:50%;opacity:.45;fill:#c1cde0}
 .fighter.mine{border:3px solid #efc04f;background:linear-gradient(135deg,#8b6824,#382a16)}
-.mine::before{content:"★";position:absolute;top:3px;left:5px;color:#ffd76c;z-index:2;font-size:15px}
-.dot{position:absolute;right:4px;top:4px;width:8px;height:8px;border-radius:50%;background:#efc04f;box-shadow:0 0 4px #111}
+.mine::before {
+  display: none !important;
+}
+.dot {
+  display: none !important;
+}
 footer{text-align:center;color:#a8b7cb;font-size:12px;padding:22px}
 .overlay{position:fixed;inset:0;background:#050810dc;display:flex;align-items:center;justify-content:center;z-index:10;padding:12px}
 .hidden{display:none!important}
