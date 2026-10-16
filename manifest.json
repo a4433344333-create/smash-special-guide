@@ -1,0 +1,12 @@
+
+{
+  "name": "スマブラSP デデデ対策図鑑",
+  "short_name": "スマブラ対策",
+  "description": "デデデ使い専用のスマブラSPキャラ対策図鑑",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#10141e",
+  "theme_color": "#10141e",
+  "lang": "ja"
+}
