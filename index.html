@@ -629,7 +629,7 @@ async function flushPending() {
 
       await setDoc(memoRef(name), {
         name,
-        notes: entry.notes,
+        notes: entry.notes.map(([title, body]) => ({ title, body })),
         changedAt: entry.changedAt
       });
 
@@ -689,7 +689,7 @@ uploadBtn.onclick = async () => {
     for (const name of fighters) {
       await setDoc(memoRef(name), {
         name,
-        notes: data.notes[name] || [],
+        notes: (data.notes[name] || []).map(([title, body]) => ({ title, body })),
         changedAt: Date.now()
       });
     }
@@ -731,7 +731,9 @@ downloadBtn.onclick = async () => {
         fighters.includes(record.name) &&
         Array.isArray(record.notes)
       ) {
-        nextNotes[record.name] = record.notes;
+        nextNotes[record.name] = record.notes.map(
+  item => [item.title, item.body]
+);
       }
     });
 
@@ -801,9 +803,11 @@ onAuthStateChanged(auth, user => {
 
         if (
           JSON.stringify(data.notes[name] || []) !==
-          JSON.stringify(record.notes)
+          JSON.stringify(record.notes.map(item => [item.title, item.body]))
         ) {
-          data.notes[name] = record.notes;
+          data.notes[name] = record.notes.map(
+  item => [item.title, item.body]
+);
           changed = true;
         }
       });
